@@ -12,7 +12,8 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from scipy.spatial.transform import Rotation
 import open3d as o3d
-
+import csv
+import os
 
 DEG2RAD = 3.1415926 / 180.0
 
@@ -79,21 +80,6 @@ class ModelNet40H5(Dataset):
         return self.data.shape[0]
     
     def __getitem__(self, item):
-        
-        # anglex = np.random.uniform(-90, 90) * DEG2RAD
-        # angley = np.random.uniform(-90, 90) * DEG2RAD
-        # anglez = np.random.uniform(-90, 90) * DEG2RAD
-        # euler_ab = np.asarray([anglez, angley, anglex]).astype('float32')
-        # euler_ba = -euler_ab[::-1]
-        
-        # rotation_ab = Rotation.from_euler('zyx', euler_ab)
-        # R_ab = rotation_ab.as_matrix().astype('float32')
-        # R_ba = R_ab.T
-        
-        # translation_ab = np.array([np.random.uniform(-0.5, 0.5), 
-        #                            np.random.uniform(-0.5, 0.5), 
-        #                            np.random.uniform(-0.5, 0.5)]).astype('float32')
-        # translation_ba = -R_ba.dot(translation_ab)
         rigidAB = Rigid()
         rigidAB.getRandomRigid()
         rigidBA = rigidAB.getInvRigid()
@@ -110,21 +96,6 @@ class ModelNet40H5(Dataset):
         if self.targetGaussianNoise:
             pc2 = self.jitter_pointcloud(pc2)
         pc2 = np.random.permutation(pc2).T
-        
-        # pc = self.data[item]
-        # pc1 = 0
-        # pc2 = 0
-        # if (self.viewF):
-        #     pc_view, _ = GetRandomViewPointCloud(pc)
-        #     pc1 = pc[:pc_view.shape[0]].T
-        #     pc2 = (R_ab @ (pc_view.T)).T + translation_ab
-        # else:
-        #     pc1 = (pc[:self.number]).T
-        #     pc2 = np.random.permutation(pc)
-        #     pc2 = ((R_ab @ pc2.T).T + translation_ab)[:self.targetNumber]
-        # if self.targetGaussianNoise:
-        #     pc2 = self.jitter_pointcloud(pc2)
-        # pc2 = np.random.permutation(pc2).T
         
         return pc1.astype('float32'), pc2.astype('float32'), \
             rigidAB.rotation, rigidAB.translation, rigidBA.rotation, rigidBA.translation, \
@@ -147,24 +118,165 @@ def GetRandomViewPointCloud(points):
     if (sub_points.shape[0] < 64):
         sub_points, camPosition = GetRandomViewPointCloud(points)
     return sub_points, camPosition
-        
-if __name__ == '__main__':
-    mod = ModelNet40H5(targetViewPC = True)
-    loader = DataLoader(mod)
-    cnt = 0
-    for i in loader:
-        # pts, pos = GetRandomViewPointCloud(i[0])
-        pts = np.squeeze(i[1].numpy().T, axis = 2)
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(pts)
-        o3d.visualization.draw_geometries([pcd], 
-                                          zoom=1,
-                                          # front=pos,
-                                          front=[1, 0, 0],
-                                          lookat=[0, 0, 0],
-                                          up=[0, 1, 0])
 
-        cnt += 1
-        if (cnt > 10):
-            break
+class ValidationModel():
+    def __init__(self):
+        self.number = 0
+        self.templateModelList = []
+        self.targetModelList = []
+        self.template2TargetRigidList = []
+        self.target2TemplateRigidList = []
     
+    def addToModelQueue(self, templateModel, targetModel, rigidTemplate2Target, rigidTarget2Template):
+        self.templateModelList.append(templateModel)
+        self.targetModelList.append(targetModel)
+        self.template2TargetRigidList.append(rigidTemplate2Target)
+        self.target2TemplateRigidList.append(rigidTarget2Template)
+        self.number += 1
+    
+    def writeModelToFile(self, DIR_PATH = 'ModelNet40_VALID', modelType = 'pcd'):
+        csvFirstRow = ['TemplateModelName', 'TargetModelName', 
+                       'Rotation_temp2tar', 'Translation_temp2tar', 
+                       'Rotation_tar2temp', 'Translation_tar2temp', 
+                       'EulerAngle_temp2tar', 'EulerAngle_tar2temp']
+        
+        # ========================Directory Initial Process========================
+        storeTemplateDIR = os.path.join(DIR_PATH, 'template')
+        storeTargetDIR = os.path.join(DIR_PATH, 'target')
+        if not os.path.exists(DIR_PATH):
+            os.makedirs(DIR_PATH)
+        if not os.path.exists(storeTemplateDIR):
+            os.makedirs(storeTemplateDIR)
+        if not os.path.exists(storeTargetDIR):
+            os.makedirs(storeTargetDIR)
+        
+        # ========================CSV File Process========================
+        with open('%s/rigids.csv' %DIR_PATH, 'w', encoding = 'utf-8', newline = '') as fp:
+            csvWriter = csv.writer(fp)
+            csvWriter.writerow(csvFirstRow)
+            for i, rigid in enumerate(zip(self.template2TargetRigidList, self.target2TemplateRigidList)):
+                templateModelName = ('template_%d' %i)
+                targetModelName = ('target_%d' %i)
+                writeRow = [templateModelName, targetModelName, 
+                            rigid[0].rotation, rigid[0].translation, 
+                            rigid[1].rotation, rigid[1].translation, 
+                            rigid[0].eulerAng, rigid[1].eulerAng]
+                csvWriter.writerow(writeRow)
+        
+        # ========================Model File Process========================
+        o3dTypeF = True if type(self.templateModelList[0]) == type(o3d.geometry.PointCloud()) else False
+        for i, model in enumerate(zip(self.templateModelList, self.targetModelList)):
+            templateModelName = ('template_%d.%s' %(i, modelType))
+            targetModelName = ('target_%d.%s' %(i, modelType))
+            if (o3dTypeF):
+                o3d.io.write_point_cloud(os.path.join(storeTemplateDIR, templateModelName), model[0])
+                o3d.io.write_point_cloud(os.path.join(storeTargetDIR, targetModelName), model[1])
+            else:
+                templatePC = o3d.geometry.PointCloud()
+                templatePC.points = o3d.utility.Vector3dVector(model[0])
+                targetPC = o3d.geometry.PointCloud()
+                targetPC.points = o3d.utility.Vector3dVector(model[1])
+                o3d.io.write_point_cloud(os.path.join(storeTemplateDIR, templateModelName), templatePC)
+                o3d.io.write_point_cloud(os.path.join(storeTargetDIR, targetModelName), targetPC)
+    
+    def ReadModelFromFile(self, DIR_PATH = 'ModelNet40_VALID', modelType = 'pcd'):
+        # ========================Read CSV File========================
+        readTemplateDIR = os.path.join(DIR_PATH, 'template')
+        readTargetDIR = os.path.join(DIR_PATH, 'target')
+        with open('%s/rigids.csv' %DIR_PATH, 'r', encoding = 'utf-8', newline = '') as fp:
+            csvReader = csv.reader(fp)
+            for i, item in enumerate(csvReader):
+                if (i == 0):# Ignore variable labels
+                    continue
+                templateModelPath = os.path.join(readTemplateDIR, ('%s.%s' %(item[0], modelType)))
+                targetModelPath = os.path.join(readTargetDIR, ('%s.%s' %(item[1], modelType)))
+                if ((not os.path.exists(templateModelPath)) or (not os.path.exists(targetModelPath))):
+                    continue
+                templateModel = o3d.io.read_point_cloud(templateModelPath)
+                targetModel = o3d.io.read_point_cloud(targetModelPath)
+                
+                temp2TarRotStr = item[2].replace('[', '').replace(']', '').split()
+                temp2TarRotList = [float(i) for i in temp2TarRotStr]
+                temp2TarRot = np.array(temp2TarRotList).reshape((3, 3))
+                temp2TarTransStr = item[3].strip('[]').split()
+                temp2TarTransList = [float(i) for i in temp2TarTransStr]
+                temp2TarTrans = np.array(temp2TarTransList)
+                temp2TarEulerAngStr = item[6].strip('[]').split()
+                temp2TarEulerAngList = [float(i) for i in temp2TarEulerAngStr]
+                temp2TarEulerAng = np.array(temp2TarEulerAngList)
+                
+                tar2TempRotStr = item[4].replace('[', '').replace(']', '').split()
+                tar2TempRotList = [float(i) for i in tar2TempRotStr]
+                tar2TempRot = np.array(tar2TempRotList).reshape((3, 3))
+                tar2TempTransStr = item[5].strip('[]').split()
+                tar2TempTransList = [float(i) for i in tar2TempTransStr]
+                tar2TempTrans = np.array(tar2TempTransList)
+                tar2TempEulerAngStr = item[7].strip('[]').split()
+                tar2TempEulerAngList = [float(i) for i in tar2TempEulerAngStr]
+                tar2TempEulerAng = np.array(tar2TempEulerAngList)
+                
+                temp2TarRigid = Rigid(temp2TarRot, temp2TarTrans, temp2TarEulerAng)
+                tar2TempRigid = Rigid(tar2TempRot, tar2TempTrans, tar2TempEulerAng)
+                
+                self.number += 1
+                self.templateModelList.append(templateModel)
+                self.targetModelList.append(targetModel)
+                self.template2TargetRigidList.append(temp2TarRigid)
+                self.target2TemplateRigidList.append(tar2TempRigid)
+
+class ModelNet40PCD(Dataset):
+    def __init__(self, DIR_PATH):
+        self.models = ValidationModel()
+        self.models.ReadModelFromFile(DIR_PATH = DIR_PATH)
+        
+    def __len__(self):
+        return self.models.number
+    
+    def __getitem__(self, item):
+        templateModel = self.models.templateModelList[item]
+        targetModel = self.models.targetModelList[item]
+        pc1 = np.asarray(templateModel.points).T
+        pc2 = np.asarray(targetModel.points).T
+        template2TargetRigid = self.models.template2TargetRigidList[item]
+        target2TemplateRigid = self.models.target2TemplateRigidList[item]
+        return pc1.astype('float32'), pc2.astype('float32'), \
+            template2TargetRigid.rotation.astype('float32'), template2TargetRigid.translation.astype('float32'), \
+                target2TemplateRigid.rotation.astype('float32'), target2TemplateRigid.translation.astype('float32'), \
+                    template2TargetRigid.eulerAng.astype('float32'), target2TemplateRigid.eulerAng.astype('float32')
+
+
+if __name__ == '__main__':
+    mod = ModelNet40H5(targetViewPC = True, dataPartition = 'test')
+    loader = DataLoader(mod)
+    storeModel = ValidationModel()
+    
+    for cnt, i in enumerate(loader):
+        # pts, pos = GetRandomViewPointCloud(i[0])
+        pts0 = np.squeeze(i[0].numpy().T, axis = 2)
+        pcd0 = o3d.geometry.PointCloud()
+        pcd0.points = o3d.utility.Vector3dVector(pts0)
+        pts1 = np.squeeze(i[1].numpy().T, axis = 2)
+        pcd1 = o3d.geometry.PointCloud()
+        pcd1.points = o3d.utility.Vector3dVector(pts1)
+        # o3d.visualization.draw_geometries([pcd0, pcd1], 
+        #                                   zoom=1,
+        #                                   # front=pos,
+        #                                   front=[1, 0, 0],
+        #                                   lookat=[0, 0, 0],
+        #                                   up=[0, 1, 0])
+        rig0 = Rigid(np.squeeze(i[2].numpy()), np.squeeze(i[3].numpy()), np.squeeze(i[6].numpy()))
+        rig1 = Rigid(np.squeeze(i[4].numpy()), np.squeeze(i[5].numpy()), np.squeeze(i[7].numpy()))
+        storeModel.addToModelQueue(pcd0, pcd1, rig0, rig1)
+        
+        cnt += 1
+        if (cnt >= 50):
+            break
+    storeModel.writeModelToFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID')
+    # readModel = ValidationModel()
+    # readModel.ReadModelFromFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID')
+    # for pcd in zip(readModel.templateModelList, readModel.targetModelList):
+    #     o3d.visualization.draw_geometries([pcd[0], pcd[1]], 
+    #                                       zoom=1,
+    #                                       front=[1, 0, 0],
+    #                                       lookat=[0, 0, 0],
+    #                                       up=[0, 1, 0])

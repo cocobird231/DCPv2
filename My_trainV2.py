@@ -41,9 +41,6 @@ def _init_(args):
         os.makedirs('checkpoints/' + args.exp_name)
     if not os.path.exists('checkpoints/' + args.exp_name + '/' + 'models'):
         os.makedirs('checkpoints/' + args.exp_name + '/' + 'models')
-    os.system('cp main.py checkpoints' + '/' + args.exp_name + '/' + 'main.py.backup')
-    os.system('cp model.py checkpoints' + '/' + args.exp_name + '/' + 'model.py.backup')
-    os.system('cp data.py checkpoints' + '/' + args.exp_name + '/' + 'data.py.backup')
 
 
 def test_one_epoch(args, net, test_loader):
@@ -487,6 +484,8 @@ def main():
                         help='dataset to use')
     parser.add_argument('--dataset_path', type=str, default='D:/Datasets/modelnet40_ply_hdf5_2048', choices=['D:/Datasets/modelnet40_ply_hdf5_2048', 'data/modelnet40_ply_hdf5_2048'], metavar='N',
                         help='dataset path')
+    parser.add_argument('--viewF', type=bool, default=False, metavar='N',
+                        help='Wheter to test on unseen category')
     parser.add_argument('--factor', type=float, default=4, metavar='N',
                         help='Divided factor for rotations')
     parser.add_argument('--model_path', type=str, default='', metavar='N',
@@ -510,13 +509,15 @@ def main():
         train_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
                                                templateNumber = args.num_points, 
                                                targetNumber = args.num_points, 
-                                               dataPartition = 'train', targetGaussianNoise = args.gaussian_noise), 
+                                               dataPartition = 'train', targetGaussianNoise = args.gaussian_noise, 
+                                               targetViewPC = args.viewF), 
                                   batch_size = args.batch_size, 
                                   shuffle=True, drop_last=True)
         test_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
                                               templateNumber = args.num_points, 
                                               targetNumber = args.num_points, 
-                                              dataPartition = 'test', targetGaussianNoise = args.gaussian_noise), 
+                                              dataPartition = 'test', targetGaussianNoise = args.gaussian_noise, 
+                                              targetViewPC = args.viewF), 
                                  batch_size = args.test_batch_size, 
                                  shuffle=True, drop_last=False)
     else:

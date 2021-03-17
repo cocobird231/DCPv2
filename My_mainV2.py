@@ -17,7 +17,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from My_ReadCADV2 import ModelNet40H5
+from My_ReadCADV2 import ModelNet40H5, ModelNet40PCD
 
 from scipy.spatial.transform import Rotation
 
@@ -78,7 +78,7 @@ def test_one_epoch(args, net, test_loader):
     eulers_ab = []
     eulers_ba = []
     
-    counter = Counter(10)
+    counter = Counter(50)
     DCP_ICP_ANGLE_LIST = []
     DCP_ICP_TRANS_LIST = []
     
@@ -210,13 +210,13 @@ def test_one_epoch(args, net, test_loader):
         DCP_ICP_ANGLE_LIST.append(Rotation.from_matrix(DCP_ICP_TRANS_FINAL[:3, :3]).as_euler('zyx'))
         DCP_ICP_TRANS_LIST.append(DCP_ICP_TRANS_FINAL[:3, 3])
         
-        o3d.visualization.draw_geometries([FGR_ICP_PC, targetPC, DCP_ICP_PC.transform(DCP_ICP_TRANS_FINAL), DCP_PC], 
-                                          zoom=1,
-                                          front=[1, 1, 1],
-                                          lookat=[0, 0, 0],
-                                          up=[0, 1, 0])
+        # o3d.visualization.draw_geometries([FGR_ICP_PC, targetPC, DCP_ICP_PC.transform(DCP_ICP_TRANS_FINAL), DCP_PC], 
+        #                                   zoom=1,
+        #                                   front=[1, 1, 1],
+        #                                   lookat=[0, 0, 0],
+        #                                   up=[0, 1, 0])
         print('\n')
-        print('ICPxyz: ', Rotation.from_matrix(DCP_ICP_TRANS_FINAL[:3, :3]).as_euler('xyz', True))
+        # print('ICPxyz: ', Rotation.from_matrix(DCP_ICP_TRANS_FINAL[:3, :3]).as_euler('xyz', True))
         print('ICPzyx: ', Rotation.from_matrix(DCP_ICP_TRANS_FINAL[:3, :3]).as_euler('zyx', True))
         print('euler: ', np.degrees(euler_ab.numpy()))
         
@@ -283,13 +283,28 @@ def test(args, net, test_loader, textio):
                      test_t_mse_ba, test_t_rmse_ba, test_t_mae_ba))
     
     avgAngRMSE = 0
+    ranks = [0 for i in range(5)]# [0]: err<1, [1]: err<5, [2]: err<10, [3]: err<20, [4]: err<30
     print('Angle display in degrees: [Z, Y, X]')
     for i, ang in enumerate(angleList):
         angDiff = np.abs(np.degrees(test_eulers_ab[i]) - np.degrees(ang))
         AngRMSE = np.sqrt(np.mean(angDiff) ** 2)
         avgAngRMSE += AngRMSE
         print('Angle diff: ', angDiff, (' RMSE: %f' %AngRMSE))
+        
+        if (AngRMSE <= 1):
+            ranks[0] += 1
+        if (AngRMSE <= 5):
+            ranks[1] += 1
+        if (AngRMSE <= 10):
+            ranks[2] += 1
+        if (AngRMSE <= 20):
+            ranks[3] += 1
+        if (AngRMSE <= 30):
+            ranks[4] += 1
+    
     print('Average Angle Error: %f' %(avgAngRMSE / len(angleList)))
+    for i, rk in enumerate(ranks):
+        print('rank[%d]: %d' %(i, rk))
     
     
 def main():
@@ -299,7 +314,7 @@ def main():
     parser.add_argument('--model', type=str, default='dcp', metavar='N',
                         choices=['dcp'],
                         help='Model to use, [dcp]')
-    parser.add_argument('--emb_nn', type=str, default='dgcnn', metavar='N',
+    parser.add_argument('--emb_nn', type=str, default='pointnet', metavar='N',
                         choices=['pointnet', 'dgcnn'],
                         help='Embedding nn to use, [pointnet, dgcnn]')
     parser.add_argument('--pointer', type=str, default='transformer', metavar='N',
@@ -348,37 +363,33 @@ def main():
                         help='dataset to use')
     parser.add_argument('--dataset_path', type=str, default='D:/Datasets/modelnet40_ply_hdf5_2048', choices=['D:/Datasets/modelnet40_ply_hdf5_2048', 'data/modelnet40_ply_hdf5_2048'], metavar='N',
                         help='dataset path')
+    parser.add_argument('--viewF', type=bool, default=True, metavar='N',
+                        help='Wheter to test on unseen category')
     parser.add_argument('--factor', type=float, default=4, metavar='N',
                         help='Divided factor for rotations')
-    parser.add_argument('--model_path', type=str, default='pretrained/gaussian_samepoint.t7', metavar='N',
+    parser.add_argument('--model_path', type=str, default='pretrained/gaussian_samepoint_PN_best.t7', metavar='N',
                         help='Pretrained model path')
     parser.add_argument('--start_epoch', type=int, default=0, metavar='N',
                         help='start position for model fine tune')
 
     args = parser.parse_args()
     torch.backends.cudnn.deterministic = True
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    np.random.seed(args.seed)
+    # torch.manual_seed(args.seed)
+    # torch.cuda.manual_seed_all(args.seed)
+    # np.random.seed(args.seed)
     
     textio = IOStream('checkpoints/' + args.exp_name + '/run.log')
     textio.cprint(str(args))
 
     if args.dataset == 'modelnet40':
-        train_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
-                                               templateNumber = args.num_points, 
-                                               targetNumber = args.num_points, 
-                                               dataPartition = 'train', targetGaussianNoise = args.gaussian_noise, 
-                                               targetViewPC = True), 
-                                  batch_size = args.batch_size, 
-                                  shuffle=True, drop_last=True)
-        test_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
-                                              templateNumber = args.num_points, 
-                                              targetNumber = args.num_points, 
-                                              dataPartition = 'test', targetGaussianNoise = args.gaussian_noise, 
-                                              targetViewPC = True), 
-                                 batch_size = args.test_batch_size, 
-                                 shuffle=True, drop_last=False)
+        # test_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
+        #                                       templateNumber = args.num_points, 
+        #                                       targetNumber = args.num_points, 
+        #                                       dataPartition = 'test', targetGaussianNoise = args.gaussian_noise, 
+        #                                       targetViewPC = args.viewF), 
+        #                          batch_size = args.test_batch_size, 
+        #                          shuffle=True, drop_last=False)
+        test_loader = DataLoader(ModelNet40PCD(DIR_PATH = 'D:/Datasets/ModelNet40_VALID'))
     else:
         raise Exception("not implemented")
     
