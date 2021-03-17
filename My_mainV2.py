@@ -374,11 +374,16 @@ def main():
 
     args = parser.parse_args()
     torch.backends.cudnn.deterministic = True
-    # torch.manual_seed(args.seed)
-    # torch.cuda.manual_seed_all(args.seed)
-    # np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
     
-    textio = IOStream('checkpoints/' + args.exp_name + '/run.log')
+    logPath = os.path.join('checkpoints', args.exp_name, 'run.log')
+    if (not os.path.exists('checkpoints')):
+        os.mkdir('checkpoints')
+    if (not os.path.exists(os.path.join('checkpoints', args.exp_name))):
+        os.mkdir(os.path.join('checkpoints', args.exp_name))
+    textio = IOStream(logPath)
     textio.cprint(str(args))
 
     if args.dataset == 'modelnet40':

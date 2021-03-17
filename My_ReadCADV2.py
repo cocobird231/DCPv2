@@ -71,11 +71,6 @@ class ModelNet40H5(Dataset):
         all_label = np.concatenate(all_label, axis=0)
         return all_data, all_label
 
-    def jitter_pointcloud(self, pointcloud, sigma=0.01, clip=0.05):
-        N, C = pointcloud.shape
-        pointcloud += np.clip(sigma * np.random.randn(N, C), -1 * clip, clip)
-        return pointcloud
-        
     def __len__(self):
         return self.data.shape[0]
     
@@ -86,15 +81,15 @@ class ModelNet40H5(Dataset):
         
         pc = self.data[item]
         if (self.viewF):
-            pc_view, _ = GetRandomViewPointCloud(pc)
-            pc1 = pc[:pc_view.shape[0]].T
+            pc_view, _ = GetRandomViewPointCloud(pc, self.targetNumber)
+            pc1 = pc[:self.number].T
             pc2 = (rigidAB.rotation @ (pc_view.T)).T + rigidAB.translation
         else:
             pc1 = (pc[:self.number]).T
             pc2 = np.random.permutation(pc)
             pc2 = ((rigidAB.rotation @ pc2.T).T + rigidAB.translation)[:self.targetNumber]
         if self.targetGaussianNoise:
-            pc2 = self.jitter_pointcloud(pc2)
+            pc2 = jitter_pointcloud(pc2)
         pc2 = np.random.permutation(pc2).T
         
         return pc1.astype('float32'), pc2.astype('float32'), \
@@ -104,20 +99,33 @@ class ModelNet40H5(Dataset):
         # return pc2.astype('float32'), pc1.astype('float32'), R_ba, translation_ba, R_ab, translation_ab, euler_ba, euler_ab
 
 
-def GetRandomViewPointCloud(points):
+def jitter_pointcloud(pointcloud, sigma=0.01, clip=0.05):
+    N, C = pointcloud.shape
+    pointcloud += np.clip(sigma * np.random.randn(N, C), -1 * clip, clip)
+    return pointcloud
+
+def GetRandomViewPointCloud(points, num = -1):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     cam_rho = np.linalg.norm(pcd.get_max_bound() - pcd.get_min_bound())
-    cam_theta = np.random.uniform(-180, 180) * DEG2RAD
+    cam_theta = np.random.uniform(0, 180) * DEG2RAD
     cam_phi = np.random.uniform(0, 179) * DEG2RAD
     camPosition = [np.cos(cam_theta) * np.sin(cam_phi), np.sin(cam_theta) * np.sin(cam_phi), np.cos(cam_phi)]
     camPosition = [ i * cam_rho for i in camPosition]
     _, sub_points_map = pcd.hidden_point_removal(camPosition, cam_rho * 200)
     sub_pcd = pcd.select_by_index(sub_points_map)
     sub_points = np.asarray(sub_pcd.points)
-    if (sub_points.shape[0] < 64):
-        sub_points, camPosition = GetRandomViewPointCloud(points)
+    if (num != -1):
+        if (sub_points.shape[0] >= num):
+            sub_points = sub_points[:num]
+        else:
+            while (sub_points.shape[0] < num):
+                add_points = sub_points[:(num - sub_points.shape[0])]
+                add_points = jitter_pointcloud(add_points)
+                sub_points = np.concatenate((sub_points, add_points), axis = 0)
+                sub_points = np.random.permutation(sub_points)
     return sub_points, camPosition
+
 
 class ValidationModel():
     def __init__(self):
@@ -267,7 +275,7 @@ if __name__ == '__main__':
         rig0 = Rigid(np.squeeze(i[2].numpy()), np.squeeze(i[3].numpy()), np.squeeze(i[6].numpy()))
         rig1 = Rigid(np.squeeze(i[4].numpy()), np.squeeze(i[5].numpy()), np.squeeze(i[7].numpy()))
         storeModel.addToModelQueue(pcd0, pcd1, rig0, rig1)
-        
+        print(pcd0, pcd1)
         cnt += 1
         if (cnt >= 50):
             break
