@@ -115,6 +115,8 @@ def GetRandomViewPointCloud(points, num = -1):
     _, sub_points_map = pcd.hidden_point_removal(camPosition, cam_rho * 200)
     sub_pcd = pcd.select_by_index(sub_points_map)
     sub_points = np.asarray(sub_pcd.points)
+    if (sub_points.shape[0] < 200):
+        sub_points, camPosition = GetRandomViewPointCloud(points, num)
     if (num != -1):
         if (sub_points.shape[0] >= num):
             sub_points = sub_points[:num]

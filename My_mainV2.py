@@ -357,7 +357,7 @@ def main():
                         help='Wheter to add gaussian noise')
     parser.add_argument('--unseen', type=bool, default=False, metavar='N',
                         help='Wheter to test on unseen category')
-    parser.add_argument('--num_points', type=int, default=1024, metavar='N',
+    parser.add_argument('--num_points', type=int, default=512, metavar='N',
                         help='Num of points to use')
     parser.add_argument('--dataset', type=str, default='modelnet40', choices=['modelnet40'], metavar='N',
                         help='dataset to use')
@@ -387,14 +387,14 @@ def main():
     textio.cprint(str(args))
 
     if args.dataset == 'modelnet40':
-        # test_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
-        #                                       templateNumber = args.num_points, 
-        #                                       targetNumber = args.num_points, 
-        #                                       dataPartition = 'test', targetGaussianNoise = args.gaussian_noise, 
-        #                                       targetViewPC = args.viewF), 
-        #                          batch_size = args.test_batch_size, 
-        #                          shuffle=True, drop_last=False)
-        test_loader = DataLoader(ModelNet40PCD(DIR_PATH = 'D:/Datasets/ModelNet40_VALID'))
+        test_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
+                                              templateNumber = args.num_points, 
+                                              targetNumber = args.num_points, 
+                                              dataPartition = 'test', targetGaussianNoise = args.gaussian_noise, 
+                                              targetViewPC = args.viewF), 
+                                  batch_size = args.test_batch_size, 
+                                  shuffle=True, drop_last=False)
+        # test_loader = DataLoader(ModelNet40PCD(DIR_PATH = 'D:/Datasets/ModelNet40_VALID'))
     else:
         raise Exception("not implemented")
     
