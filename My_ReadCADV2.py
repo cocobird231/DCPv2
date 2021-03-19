@@ -23,15 +23,15 @@ class Rigid():
         self.translation = translation
         self.eulerAng = eulerAng
     
-    def getRandomRigid(self):
-        anglex = np.random.uniform(-90, 90) * DEG2RAD
-        angley = np.random.uniform(-90, 90) * DEG2RAD
-        anglez = np.random.uniform(-90, 90) * DEG2RAD
+    def getRandomRigid(self, angleRange = 90, translationRange = 0.5):
+        anglex = np.random.uniform(-angleRange, angleRange) * DEG2RAD
+        angley = np.random.uniform(-angleRange, angleRange) * DEG2RAD
+        anglez = np.random.uniform(-angleRange, angleRange) * DEG2RAD
         self.eulerAng = np.asarray([anglez, angley, anglex]).astype('float32')
         self.rotation = Rotation.from_euler('zyx', self.eulerAng).as_matrix().astype('float32')
-        self.translation = np.array([np.random.uniform(-0.5, 0.5), 
-                                   np.random.uniform(-0.5, 0.5), 
-                                   np.random.uniform(-0.5, 0.5)]).astype('float32')
+        self.translation = np.array([np.random.uniform(-translationRange, translationRange), 
+                                   np.random.uniform(-translationRange, translationRange), 
+                                   np.random.uniform(-translationRange, translationRange)]).astype('float32')
 
 
     def getInvRigid(self):
@@ -44,7 +44,8 @@ class Rigid():
 class ModelNet40H5(Dataset):
     def __init__(self, DIR_PATH = 'D:/Datasets/modelnet40_ply_hdf5_2048', dataPartition = 'None', 
                  templateNumber = 1024, targetNumber = 1024, 
-                 targetGaussianNoise = True, targetViewPC = False):
+                 targetGaussianNoise = True, targetViewPC = False, 
+                 angleRange = 90, translationRange = 0.5):
         
         self.data, self.label = self.load_data(DIR_PATH, dataPartition)
         self.number = templateNumber
@@ -52,6 +53,8 @@ class ModelNet40H5(Dataset):
         self.factor = 4
         self.targetGaussianNoise = targetGaussianNoise
         self.viewF = targetViewPC
+        self.angleRange = angleRange
+        self.translationRange = translationRange
                 
     def load_data(self, DIR_PATH, dataPartition):
         all_data = []
@@ -76,7 +79,7 @@ class ModelNet40H5(Dataset):
     
     def __getitem__(self, item):
         rigidAB = Rigid()
-        rigidAB.getRandomRigid()
+        rigidAB.getRandomRigid(self.angleRange, self.translationRange)
         rigidBA = rigidAB.getInvRigid()
         
         pc = self.data[item]
@@ -108,8 +111,8 @@ def GetRandomViewPointCloud(points, num = -1):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points)
     cam_rho = np.linalg.norm(pcd.get_max_bound() - pcd.get_min_bound())
-    cam_theta = np.random.uniform(0, 180) * DEG2RAD
-    cam_phi = np.random.uniform(0, 179) * DEG2RAD
+    cam_theta = np.random.uniform(-180, 180) * DEG2RAD
+    cam_phi = np.random.uniform(0, 90) * DEG2RAD
     camPosition = [np.cos(cam_theta) * np.sin(cam_phi), np.sin(cam_theta) * np.sin(cam_phi), np.cos(cam_phi)]
     camPosition = [ i * cam_rho for i in camPosition]
     _, sub_points_map = pcd.hidden_point_removal(camPosition, cam_rho * 200)
@@ -256,7 +259,9 @@ class ModelNet40PCD(Dataset):
 
 
 if __name__ == '__main__':
-    mod = ModelNet40H5(targetViewPC = True, dataPartition = 'test')
+    mod = ModelNet40H5(targetViewPC = True, dataPartition = 'test', 
+                       templateNumber = 1024, targetNumber = 1024, 
+                       angleRange = 90, translationRange = 0.5)
     loader = DataLoader(mod)
     storeModel = ValidationModel()
     
@@ -281,7 +286,7 @@ if __name__ == '__main__':
         cnt += 1
         if (cnt >= 50):
             break
-    storeModel.writeModelToFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID')
+    storeModel.writeModelToFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID_1024_2')
     # readModel = ValidationModel()
     # readModel.ReadModelFromFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID')
     # for pcd in zip(readModel.templateModelList, readModel.targetModelList):

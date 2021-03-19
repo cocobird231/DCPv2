@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import MultiStepLR
 from My_modelV2 import DCP
-from My_utilV2 import transform_point_cloud, npmat2euler
+from My_utilV2 import transform_point_cloud, npmat2euler, ICPIter
 import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -79,8 +79,10 @@ def test_one_epoch(args, net, test_loader):
     eulers_ba = []
     
     counter = Counter(50)
-    DCP_ICP_ANGLE_LIST = []
-    DCP_ICP_TRANS_LIST = []
+    ANGLE_LIST = []
+    TRANS_LIST = []
+    ANGLE_ROT_LIST = []
+    TRANS_LIST = []
     
     for src, target, rotation_ab, translation_ab, rotation_ba, translation_ba, euler_ab, euler_ba in tqdm(test_loader):
         
@@ -152,29 +154,7 @@ def test_one_epoch(args, net, test_loader):
         tarFPFH = o3d.pipelines.registration.compute_fpfh_feature(
             targetPC, o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=10))
         
-        FGR = o3d.pipelines.registration.registration_fast_based_on_feature_matching(
-            copy.deepcopy(srcPC), copy.deepcopy(targetPC), srcFPFH, tarFPFH)
-        
-        FGR_ICP = o3d.pipelines.registration.registration_icp(
-            copy.deepcopy(srcPC), copy.deepcopy(targetPC), 1, FGR.transformation, 
-            o3d.pipelines.registration.TransformationEstimationPointToPlane())
-        
-        FGR_ICP_PC = copy.deepcopy(srcPC)
-        FGR_ICP_PC.transform(FGR_ICP.transformation)
-        FGR_ICP_PC.paint_uniform_color([1, 0, 1])
-        
-        DCP_ROT = np.squeeze(rotation_ab_pred.detach().cpu().numpy(), axis = 0)
-        DCP_TRANS = translation_ab_pred.detach().cpu().numpy().T
-        DCP_TRANSFORM = np.block([[DCP_ROT, DCP_TRANS], [np.eye(4)[-1]]])
-        
-        DCP_PC = copy.deepcopy(srcPC)     
-        DCP_PC.paint_uniform_color([1, 1, 0.4])
-        DCP_PC.transform(DCP_TRANSFORM)
-        
-        DCP_ICP_PC = copy.deepcopy(srcPC)     
-        DCP_ICP_PC.paint_uniform_color([0, 1, 0])
-        
-        
+        #========Visualizer Setting========
         viewer = o3d.visualization.Visualizer()
         viewer.create_window('Viewer', 600, 600)
         
@@ -184,40 +164,81 @@ def test_one_epoch(args, net, test_loader):
         ctr.set_lookat([0, 0, 0])
         ctr.set_up([0, 1, 0])
         
-        viewer.add_geometry(DCP_ICP_PC)
-        viewer.add_geometry(targetPC)
         # viewer.add_geometry(srcPC)
+        viewer.add_geometry(targetPC)
         
+        #========FGR Setting========
+        # FGR = o3d.pipelines.registration.registration_fast_based_on_feature_matching(
+        #     copy.deepcopy(srcPC), copy.deepcopy(targetPC), srcFPFH, tarFPFH)
+        
+        # FGR_ICP = o3d.pipelines.registration.registration_icp(
+        #     copy.deepcopy(srcPC), copy.deepcopy(targetPC), 1, FGR.transformation, 
+        #     o3d.pipelines.registration.TransformationEstimationPointToPlane())
+        
+        # FGR_ICP_PC = copy.deepcopy(srcPC)
+        # FGR_ICP_PC.transform(FGR_ICP.transformation)
+        # FGR_ICP_PC.paint_uniform_color([1, 0, 1])
+        
+        #========DCP Setting========
+        DCP_ROT = np.squeeze(rotation_ab_pred.detach().cpu().numpy(), axis = 0)
+        DCP_TRANS = translation_ab_pred.detach().cpu().numpy().T
+        DCP_TRANSFORM = np.block([[DCP_ROT, DCP_TRANS], [np.eye(4)[-1]]])
+
+        
+        DCP_PC = copy.deepcopy(srcPC)
+        DCP_PC.paint_uniform_color([1, 1, 0.4])
+        DCP_PC.transform(DCP_TRANSFORM)
+        
+        DCP_ICP_PC = copy.deepcopy(srcPC)     
+        DCP_ICP_PC.paint_uniform_color([0, 1, 0])
+        viewer.add_geometry(DCP_ICP_PC)
         DCP_ICP_PC.transform(DCP_TRANSFORM)
         iterSize = 50
         for i in range(iterSize):
-            DCP_ICP = o3d.pipelines.registration.registration_icp(
-                DCP_ICP_PC, targetPC, 0.2, np.identity(4), 
-                o3d.pipelines.registration.TransformationEstimationPointToPlane(), 
-                o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration = 1))
-            DCP_ICP_PC.transform(DCP_ICP.transformation)
+            DCP_ICP_TRANSFORM = ICPIter(DCP_ICP_PC, targetPC, np.identity(4), iterSize = 1)
+            DCP_ICP_PC.transform(DCP_ICP_TRANSFORM.transformation)
             viewer.update_geometry(DCP_ICP_PC)
             viewer.poll_events()
             viewer.update_renderer()
         
         DCP_ICP_PC = copy.deepcopy(srcPC)
         DCP_ICP_PC.paint_uniform_color([0, 1, 0])
-        DCP_ICP = o3d.pipelines.registration.registration_icp(
-                DCP_ICP_PC, targetPC, 0.2, DCP_TRANSFORM, 
-                o3d.pipelines.registration.TransformationEstimationPointToPlane(), 
-                o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration = iterSize))
-        DCP_ICP_TRANS_FINAL = DCP_ICP.transformation
-        DCP_ICP_ANGLE_LIST.append(Rotation.from_matrix(DCP_ICP_TRANS_FINAL[:3, :3]).as_euler('zyx'))
-        DCP_ICP_TRANS_LIST.append(DCP_ICP_TRANS_FINAL[:3, 3])
+        DCP_ICP_TRANSFORM = ICPIter(DCP_ICP_PC, targetPC, DCP_TRANSFORM)
+        TRANSFORM_FINAL = DCP_ICP_TRANSFORM.transformation
+
         
         # o3d.visualization.draw_geometries([FGR_ICP_PC, targetPC, DCP_ICP_PC.transform(DCP_ICP_TRANS_FINAL), DCP_PC], 
         #                                   zoom=1,
         #                                   front=[1, 1, 1],
         #                                   lookat=[0, 0, 0],
         #                                   up=[0, 1, 0])
+        
+        
+        #========Baseline ICP Method========
+        # ICP_PC = copy.deepcopy(srcPC)
+        # ICP_PC.paint_uniform_color([0, 1, 0])
+        # viewer.add_geometry(ICP_PC)
+        # iterSize = 50
+        # for i in range(iterSize):
+        #     ICP_TRANSFORM = ICPIter(ICP_PC, copy.deepcopy(targetPC), np.identity(4), iterSize = 1)
+        #     ICP_PC.transform(ICP_TRANSFORM.transformation)
+        #     viewer.update_geometry(ICP_PC)
+        #     viewer.poll_events()
+        #     viewer.update_renderer()
+        
+        # ICP_PC = copy.deepcopy(srcPC)
+        # ICP_TRANSFORM = ICPIter(ICP_PC, copy.deepcopy(targetPC), np.identity(4))
+        # TRANSFORM_FINAL = ICP_TRANSFORM.transformation
+        
+        
+        
+        ANGLE_LIST.append(Rotation.from_matrix(TRANSFORM_FINAL[:3, :3]).as_euler('zyx'))
+        TRANS_LIST.append(TRANSFORM_FINAL[:3, 3])
+        ANGLE_ROT_LIST.append(TRANSFORM_FINAL[:3, :3])
+
         print('\n')
         # print('ICPxyz: ', Rotation.from_matrix(DCP_ICP_TRANS_FINAL[:3, :3]).as_euler('xyz', True))
-        print('ICPzyx: ', Rotation.from_matrix(DCP_ICP_TRANS_FINAL[:3, :3]).as_euler('zyx', True))
+        print('ICPzyx: ', Rotation.from_matrix(TRANSFORM_FINAL[:3, :3]).as_euler('zyx', True))
         print('euler: ', np.degrees(euler_ab.numpy()))
         
         
@@ -240,7 +261,7 @@ def test_one_epoch(args, net, test_loader):
     return total_loss * 1.0 / num_examples, \
            rotations_ab, translations_ab, rotations_ab_pred, translations_ab_pred, \
            rotations_ba, translations_ba, rotations_ba_pred, translations_ba_pred, \
-           eulers_ab, eulers_ba, DCP_ICP_ANGLE_LIST, DCP_ICP_TRANS_LIST
+           eulers_ab, eulers_ba, ANGLE_LIST, TRANS_LIST, ANGLE_ROT_LIST
 
 
 
@@ -250,7 +271,7 @@ def test(args, net, test_loader, textio):
     test_loss, \
     test_rotations_ab, test_translations_ab, test_rotations_ab_pred, test_translations_ab_pred, \
     test_rotations_ba, test_translations_ba, test_rotations_ba_pred, test_translations_ba_pred, \
-    test_eulers_ab, test_eulers_ba, angleList, transList = test_one_epoch(args, net, test_loader)
+    test_eulers_ab, test_eulers_ba, angleList, transList, ANGLE_ROT_LIST = test_one_epoch(args, net, test_loader)
 
     test_rotations_ab_pred_euler = npmat2euler(test_rotations_ab_pred)
     test_r_mse_ab = np.mean((test_rotations_ab_pred_euler - np.degrees(test_eulers_ab)) ** 2)
@@ -286,7 +307,10 @@ def test(args, net, test_loader, textio):
     ranks = [0 for i in range(5)]# [0]: err<1, [1]: err<5, [2]: err<10, [3]: err<20, [4]: err<30
     print('Angle display in degrees: [Z, Y, X]')
     for i, ang in enumerate(angleList):
-        angDiff = np.abs(np.degrees(test_eulers_ab[i]) - np.degrees(ang))
+        # angDiff = np.abs(np.degrees(test_eulers_ab[i]) - np.degrees(ang))
+        predAng = Rotation.from_matrix(ANGLE_ROT_LIST[i]).as_euler('zyx', True)
+        GTAng = Rotation.from_matrix(test_rotations_ab[i]).as_euler('zyx', True)
+        angDiff = np.abs(predAng - GTAng)
         AngRMSE = np.sqrt(np.mean(angDiff) ** 2)
         avgAngRMSE += AngRMSE
         print('Angle diff: ', angDiff, (' RMSE: %f' %AngRMSE))
@@ -367,7 +391,7 @@ def main():
                         help='Wheter to test on unseen category')
     parser.add_argument('--factor', type=float, default=4, metavar='N',
                         help='Divided factor for rotations')
-    parser.add_argument('--model_path', type=str, default='pretrained/gaussian_samepoint_PN_best.t7', metavar='N',
+    parser.add_argument('--model_path', type=str, default='pretrained/PN_V.t7', metavar='N',
                         help='Pretrained model path')
     parser.add_argument('--start_epoch', type=int, default=0, metavar='N',
                         help='start position for model fine tune')
@@ -387,14 +411,14 @@ def main():
     textio.cprint(str(args))
 
     if args.dataset == 'modelnet40':
-        test_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
-                                              templateNumber = args.num_points, 
-                                              targetNumber = args.num_points, 
-                                              dataPartition = 'test', targetGaussianNoise = args.gaussian_noise, 
-                                              targetViewPC = args.viewF), 
-                                  batch_size = args.test_batch_size, 
-                                  shuffle=True, drop_last=False)
-        # test_loader = DataLoader(ModelNet40PCD(DIR_PATH = 'D:/Datasets/ModelNet40_VALID'))
+        # test_loader = DataLoader(ModelNet40H5(DIR_PATH = args.dataset_path, 
+        #                                       templateNumber = args.num_points, 
+        #                                       targetNumber = args.num_points, 
+        #                                       dataPartition = 'test', targetGaussianNoise = args.gaussian_noise, 
+        #                                       targetViewPC = args.viewF), 
+        #                           batch_size = args.test_batch_size, 
+        #                           shuffle=True, drop_last=False)
+        test_loader = DataLoader(ModelNet40PCD(DIR_PATH = 'D:/Datasets/ModelNet40_VALID_1024_2'))
     else:
         raise Exception("not implemented")
     

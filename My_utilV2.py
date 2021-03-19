@@ -11,6 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 from scipy.spatial.transform import Rotation
+import open3d as o3d
 
 
 # Part of the code is referred from: https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py
@@ -44,3 +45,10 @@ def npmat2euler(mats, seq='zyx'):
         r = Rotation.from_dcm(mats[i])
         eulers.append(r.as_euler(seq, degrees=True))
     return np.asarray(eulers, dtype='float32')
+
+def ICPIter(templatePC, targetPC, initTransform, iterSize = 50, iterStep = 0.2):
+    ICP_TRANSFORM = o3d.pipelines.registration.registration_icp(
+        templatePC, targetPC, iterStep, initTransform, 
+        o3d.pipelines.registration.TransformationEstimationPointToPlane(), 
+        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration = iterSize))
+    return ICP_TRANSFORM
