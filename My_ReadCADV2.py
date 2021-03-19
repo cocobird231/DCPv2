@@ -259,39 +259,39 @@ class ModelNet40PCD(Dataset):
 
 
 if __name__ == '__main__':
-    mod = ModelNet40H5(targetViewPC = True, dataPartition = 'test', 
-                       templateNumber = 1024, targetNumber = 1024, 
-                       angleRange = 90, translationRange = 0.5)
-    loader = DataLoader(mod)
-    storeModel = ValidationModel()
+    # mod = ModelNet40H5(targetViewPC = True, dataPartition = 'test', 
+    #                    templateNumber = 1024, targetNumber = 1024, 
+    #                    angleRange = 90, translationRange = 0.5)
+    # loader = DataLoader(mod)
+    # storeModel = ValidationModel()
     
-    for cnt, i in enumerate(loader):
-        # pts, pos = GetRandomViewPointCloud(i[0])
-        pts0 = np.squeeze(i[0].numpy().T, axis = 2)
-        pcd0 = o3d.geometry.PointCloud()
-        pcd0.points = o3d.utility.Vector3dVector(pts0)
-        pts1 = np.squeeze(i[1].numpy().T, axis = 2)
-        pcd1 = o3d.geometry.PointCloud()
-        pcd1.points = o3d.utility.Vector3dVector(pts1)
-        # o3d.visualization.draw_geometries([pcd0, pcd1], 
-        #                                   zoom=1,
-        #                                   # front=pos,
-        #                                   front=[1, 0, 0],
-        #                                   lookat=[0, 0, 0],
-        #                                   up=[0, 1, 0])
-        rig0 = Rigid(np.squeeze(i[2].numpy()), np.squeeze(i[3].numpy()), np.squeeze(i[6].numpy()))
-        rig1 = Rigid(np.squeeze(i[4].numpy()), np.squeeze(i[5].numpy()), np.squeeze(i[7].numpy()))
-        storeModel.addToModelQueue(pcd0, pcd1, rig0, rig1)
-        print(pcd0, pcd1)
-        cnt += 1
-        if (cnt >= 50):
-            break
-    storeModel.writeModelToFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID_1024_2')
-    # readModel = ValidationModel()
-    # readModel.ReadModelFromFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID')
-    # for pcd in zip(readModel.templateModelList, readModel.targetModelList):
-    #     o3d.visualization.draw_geometries([pcd[0], pcd[1]], 
-    #                                       zoom=1,
-    #                                       front=[1, 0, 0],
-    #                                       lookat=[0, 0, 0],
-    #                                       up=[0, 1, 0])
+    # for cnt, i in enumerate(loader):
+    #     # pts, pos = GetRandomViewPointCloud(i[0])
+    #     pts0 = np.squeeze(i[0].numpy().T, axis = 2)
+    #     pcd0 = o3d.geometry.PointCloud()
+    #     pcd0.points = o3d.utility.Vector3dVector(pts0)
+    #     pts1 = np.squeeze(i[1].numpy().T, axis = 2)
+    #     pcd1 = o3d.geometry.PointCloud()
+    #     pcd1.points = o3d.utility.Vector3dVector(pts1)
+    #     # o3d.visualization.draw_geometries([pcd0, pcd1], 
+    #     #                                   zoom=1,
+    #     #                                   # front=pos,
+    #     #                                   front=[1, 0, 0],
+    #     #                                   lookat=[0, 0, 0],
+    #     #                                   up=[0, 1, 0])
+    #     rig0 = Rigid(np.squeeze(i[2].numpy()), np.squeeze(i[3].numpy()), np.squeeze(i[6].numpy()))
+    #     rig1 = Rigid(np.squeeze(i[4].numpy()), np.squeeze(i[5].numpy()), np.squeeze(i[7].numpy()))
+    #     storeModel.addToModelQueue(pcd0, pcd1, rig0, rig1)
+    #     print(pcd0, pcd1)
+    #     cnt += 1
+    #     if (cnt >= 50):
+    #         break
+    # storeModel.writeModelToFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID_1024_2')
+    readModel = ValidationModel()
+    readModel.ReadModelFromFile(DIR_PATH = 'D:/Datasets/ModelNet40_VALID_1024_2')
+    for pcd in zip(readModel.templateModelList, readModel.targetModelList):
+        o3d.visualization.draw_geometries([pcd[0], pcd[1]], 
+                                          zoom=1,
+                                          front=[1, 0, 0],
+                                          lookat=[0, 0, 0],
+                                          up=[0, 1, 0])

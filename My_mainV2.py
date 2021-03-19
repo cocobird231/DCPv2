@@ -154,18 +154,22 @@ def test_one_epoch(args, net, test_loader):
         tarFPFH = o3d.pipelines.registration.compute_fpfh_feature(
             targetPC, o3d.geometry.KDTreeSearchParamHybrid(radius=0.2, max_nn=10))
         
-        #========Visualizer Setting========
-        viewer = o3d.visualization.Visualizer()
-        viewer.create_window('Viewer', 600, 600)
+        DCP_ROT = np.squeeze(rotation_ab_pred.detach().cpu().numpy(), axis = 0)
+        DCP_TRANS = translation_ab_pred.detach().cpu().numpy().T
+        DCP_TRANSFORM = np.block([[DCP_ROT, DCP_TRANS], [np.eye(4)[-1]]])
         
-        ctr = o3d.visualization.ViewControl()
-        ctr.set_zoom(2)
-        ctr.set_front([1, 1, 1])
-        ctr.set_lookat([0, 0, 0])
-        ctr.set_up([0, 1, 0])
+        #========Visualizer Setting========
+        # viewer = o3d.visualization.Visualizer()
+        # viewer.create_window('Viewer', 600, 600)
+        
+        # ctr = o3d.visualization.ViewControl()
+        # ctr.set_zoom(2)
+        # ctr.set_front([1, 1, 1])
+        # ctr.set_lookat([0, 0, 0])
+        # ctr.set_up([0, 1, 0])
         
         # viewer.add_geometry(srcPC)
-        viewer.add_geometry(targetPC)
+        # viewer.add_geometry(targetPC)
         
         #========FGR Setting========
         # FGR = o3d.pipelines.registration.registration_fast_based_on_feature_matching(
@@ -180,33 +184,26 @@ def test_one_epoch(args, net, test_loader):
         # FGR_ICP_PC.paint_uniform_color([1, 0, 1])
         
         #========DCP Setting========
-        DCP_ROT = np.squeeze(rotation_ab_pred.detach().cpu().numpy(), axis = 0)
-        DCP_TRANS = translation_ab_pred.detach().cpu().numpy().T
-        DCP_TRANSFORM = np.block([[DCP_ROT, DCP_TRANS], [np.eye(4)[-1]]])
-
-        
-        DCP_PC = copy.deepcopy(srcPC)
-        DCP_PC.paint_uniform_color([1, 1, 0.4])
-        DCP_PC.transform(DCP_TRANSFORM)
-        
-        DCP_ICP_PC = copy.deepcopy(srcPC)     
-        DCP_ICP_PC.paint_uniform_color([0, 1, 0])
-        viewer.add_geometry(DCP_ICP_PC)
-        DCP_ICP_PC.transform(DCP_TRANSFORM)
-        iterSize = 50
-        for i in range(iterSize):
-            DCP_ICP_TRANSFORM = ICPIter(DCP_ICP_PC, targetPC, np.identity(4), iterSize = 1)
-            DCP_ICP_PC.transform(DCP_ICP_TRANSFORM.transformation)
-            viewer.update_geometry(DCP_ICP_PC)
-            viewer.poll_events()
-            viewer.update_renderer()
+        # DCP_ICP_PC = copy.deepcopy(srcPC)     
+        # DCP_ICP_PC.paint_uniform_color([0, 1, 0])
+        # viewer.add_geometry(DCP_ICP_PC)
+        # DCP_ICP_PC.transform(DCP_TRANSFORM)
+        # iterSize = 50
+        # for i in range(iterSize):
+        #     DCP_ICP_TRANSFORM = ICPIter(DCP_ICP_PC, targetPC, np.identity(4), iterSize = 1)
+        #     DCP_ICP_PC.transform(DCP_ICP_TRANSFORM.transformation)
+        #     viewer.update_geometry(DCP_ICP_PC)
+        #     viewer.poll_events()
+        #     viewer.update_renderer()
         
         DCP_ICP_PC = copy.deepcopy(srcPC)
         DCP_ICP_PC.paint_uniform_color([0, 1, 0])
-        DCP_ICP_TRANSFORM = ICPIter(DCP_ICP_PC, targetPC, DCP_TRANSFORM)
+        DCP_ICP_TRANSFORM = ICPIter(DCP_ICP_PC, copy.deepcopy(targetPC), DCP_TRANSFORM)
         TRANSFORM_FINAL = DCP_ICP_TRANSFORM.transformation
 
-        
+        # DCP_PC = copy.deepcopy(srcPC)
+        # DCP_PC.paint_uniform_color([1, 1, 0.4])
+        # DCP_PC.transform(DCP_TRANSFORM)
         # o3d.visualization.draw_geometries([FGR_ICP_PC, targetPC, DCP_ICP_PC.transform(DCP_ICP_TRANS_FINAL), DCP_PC], 
         #                                   zoom=1,
         #                                   front=[1, 1, 1],
@@ -338,7 +335,7 @@ def main():
     parser.add_argument('--model', type=str, default='dcp', metavar='N',
                         choices=['dcp'],
                         help='Model to use, [dcp]')
-    parser.add_argument('--emb_nn', type=str, default='pointnet', metavar='N',
+    parser.add_argument('--emb_nn', type=str, default='dgcnn', metavar='N',
                         choices=['pointnet', 'dgcnn'],
                         help='Embedding nn to use, [pointnet, dgcnn]')
     parser.add_argument('--pointer', type=str, default='transformer', metavar='N',
@@ -391,7 +388,7 @@ def main():
                         help='Wheter to test on unseen category')
     parser.add_argument('--factor', type=float, default=4, metavar='N',
                         help='Divided factor for rotations')
-    parser.add_argument('--model_path', type=str, default='pretrained/PN_V.t7', metavar='N',
+    parser.add_argument('--model_path', type=str, default='pretrained/dcp_v1.t7', metavar='N',
                         help='Pretrained model path')
     parser.add_argument('--start_epoch', type=int, default=0, metavar='N',
                         help='start position for model fine tune')
@@ -418,7 +415,7 @@ def main():
         #                                       targetViewPC = args.viewF), 
         #                           batch_size = args.test_batch_size, 
         #                           shuffle=True, drop_last=False)
-        test_loader = DataLoader(ModelNet40PCD(DIR_PATH = 'D:/Datasets/ModelNet40_VALID_1024_2'))
+        test_loader = DataLoader(ModelNet40PCD(DIR_PATH = 'D:/Datasets/ModelNet40_VALID_512_2'))
     else:
         raise Exception("not implemented")
     
